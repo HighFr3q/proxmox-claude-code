@@ -20,7 +20,7 @@ APP="Claude Code"
 BACKTITLE="Proxmox VE Helper Script  •  Claude Code LXC"
 
 RD='\033[01;31m'; GN='\033[1;92m'; YW='\033[33m'; BL='\033[36m'; DIM='\033[2m'; BOLD='\033[1m'; CL='\033[m'
-CM=" ✓ "; CROSS=" ✗ "; INFO=" • "; ARROW=" ➜ "
+CM=" ✓ "; CROSS=" ✗ "; INFO=" • "
 
 msg_info()  { printf "%b%s%b%s\n"      "$BL"  "$INFO"  "$CL" "$1"; }
 msg_ok()    { printf "%b%s%b%s\n"      "$GN"  "$CM"    "$CL" "$1"; }
@@ -116,7 +116,7 @@ menu() {
     return $?
   else
     echo "$prompt" >&2
-    local -a tags=() i=0
+    local -a tags=()
     while (( $# )); do
       tags+=("$1")
       printf '  %d) %s — %s\n' "$((${#tags[@]}))" "$1" "$2" >&2
