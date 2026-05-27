@@ -262,11 +262,23 @@ validate_api_key() {
   esac
 }
 
+pick_auth_mode() {
+  AUTH_MODE="$(menu "How should Claude Code sign in?" \
+    "Pick how 'claude' will authenticate inside the new container." \
+    "subscription" "Claude.ai account (Pro/Max) — no API key, uses your subscription quota" \
+    "apikey"       "Anthropic API key (sk-ant-...) — pay-per-token, no usage caps")"
+  case "$AUTH_MODE" in
+    subscription|apikey) : ;;
+    *) AUTH_MODE="subscription" ;;
+  esac
+}
+
 prompt_for_api_key() {
   while :; do
-    ANTHROPIC_API_KEY="$(password "Anthropic API Key" "Paste your Anthropic API key (starts with sk-ant-...). Leave blank to skip.")"
+    ANTHROPIC_API_KEY="$(password "Anthropic API Key" "Paste your Anthropic API key (starts with sk-ant-...). Leave blank to switch to subscription login.")"
     if [[ -z "$ANTHROPIC_API_KEY" ]]; then
-      if confirm "Skip API key?" "No key will be baked in. You'll have to run 'claude' and sign in manually inside the container. Continue without a key?" "no"; then
+      if confirm "Switch to subscription login?" "No key will be baked in. You'll run 'claude' and sign in with your Claude.ai account instead. Continue?" "yes"; then
+        AUTH_MODE="subscription"
         ANTHROPIC_API_KEY=""
         return 0
       else
@@ -300,8 +312,9 @@ The installer is about to:
 
   • Install Node.js 20 LTS + git + build-essential
   • Install @anthropic-ai/claude-code globally
-  • $( [[ -n "$ANTHROPIC_API_KEY" ]] && echo "Inject the verified API key into /etc/claude-code/env" \
-                                    || echo "Skip API-key injection (manual login required)" )
+  • $( [[ "$AUTH_MODE" == "apikey" && -n "$ANTHROPIC_API_KEY" ]] \
+        && echo "Inject the verified API key into /etc/claude-code/env" \
+        || echo "Use Claude.ai subscription login (you'll run 'claude' to OAuth)" )
 
 Proceed?
 EOF
@@ -449,10 +462,10 @@ summary() {
   local ip
   ip="$(pct exec "$CTID" -- bash -c "hostname -I | awk '{print \$1}'" 2>/dev/null || echo "<dhcp-pending>")"
   local key_note
-  if [[ -n "$ANTHROPIC_API_KEY" ]]; then
+  if [[ "$AUTH_MODE" == "apikey" && -n "$ANTHROPIC_API_KEY" ]]; then
     key_note="API key installed — 'claude' is ready to use."
   else
-    key_note="No API key was set — run 'claude' inside the container and sign in interactively."
+    key_note="Subscription mode: run 'claude' inside the container. It will print an OAuth URL — open it in any browser, sign in with your Claude.ai account, and you're set."
   fi
 
   if [[ $HAS_WHIPTAIL -eq 1 ]]; then
@@ -463,10 +476,7 @@ IP        : ${ip}
 Enter it   :  pct enter ${CTID}
 Run Claude :  claude
 
-${key_note}
-
-To rotate the key later, edit /etc/claude-code/env inside the container
-(or re-run this installer)." \
+${key_note}" \
       18 70
   fi
 
@@ -493,7 +503,7 @@ main() {
   local choice
   choice="$(menu "Install Mode" \
     "Use the recommended defaults or choose every setting yourself?" \
-    "default"  "Recommended: auto-pick CTID, defaults for cores/RAM/disk, just ask for the API key" \
+    "default"  "Recommended: auto-pick CTID and sensible resource defaults" \
     "advanced" "Walk me through every setting (CTID, resources, network, storage)" \
     "exit"     "Cancel and quit")"
 
@@ -511,7 +521,12 @@ main() {
   esac
 
   validate_ctid_free || { advanced_wizard; validate_ctid_free || exit 1; }
-  prompt_for_api_key
+  pick_auth_mode
+  if [[ "$AUTH_MODE" == "apikey" ]]; then
+    prompt_for_api_key
+  else
+    ANTHROPIC_API_KEY=""
+  fi
   show_summary_and_confirm || { msg_warn "Cancelled."; exit 0; }
 
   ensure_template
